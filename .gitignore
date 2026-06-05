@@ -1,0 +1,15 @@
+.direnv/
+/result
+.venv/
+.pytest_cache/
+__pycache__/
+*.py[cod]
+/data/
+/cache/
+/.cache/
+/trips.json
+/tokens.json
+/.coverage
+/htmlcov/
+/.mypy_cache/
+/.ruff_cache/

@@ -25,7 +25,34 @@ class FakeClient:
             "accountId": account_id or "resolved",
             "search": search_string,
             "includePaymentRecords": include_payment_records,
-            "transactions": [{"id": 1}],
+            "returnedCount": 6,
+            "totalCount": 12,
+            "transactions": [
+                {
+                    "id": 1,
+                    "transactionDate": "2026-06-20",
+                    "amount": 125,
+                    "currency": "DKK",
+                    "licenseplate": "AB12345",
+                    "stationName": "Storebaelt",
+                    "invoiceStatus": "Paid",
+                    "receiptNumber": "R-1",
+                },
+                {
+                    "id": 2,
+                    "transactionDate": "2026-06-19",
+                    "amount": 54,
+                    "currency": "DKK",
+                    "licenseplate": "CD67890",
+                    "stationName": "Oresund",
+                    "invoiceStatus": "Unpaid",
+                    "receiptNumber": "R-2",
+                },
+                {"id": 3},
+                {"id": 4},
+                {"id": 5},
+                {"id": 6},
+            ],
         }
 
     def get_current_person(self) -> dict[str, object]:
@@ -71,6 +98,7 @@ def test_trips_command_uses_global_force_login(monkeypatch) -> None:
             "--search",
             "Storebaelt",
             "--include-payment-records",
+            "--json",
         ],
     )
 
@@ -79,11 +107,100 @@ def test_trips_command_uses_global_force_login(monkeypatch) -> None:
         "accountId": "account",
         "search": "Storebaelt",
         "includePaymentRecords": True,
-        "transactions": [{"id": 1}],
+        "returnedCount": 6,
+        "totalCount": 12,
+        "transactions": [
+            {
+                "id": 1,
+                "transactionDate": "2026-06-20",
+                "amount": 125,
+                "currency": "DKK",
+                "licenseplate": "AB12345",
+                "stationName": "Storebaelt",
+                "invoiceStatus": "Paid",
+                "receiptNumber": "R-1",
+            },
+            {
+                "id": 2,
+                "transactionDate": "2026-06-19",
+                "amount": 54,
+                "currency": "DKK",
+                "licenseplate": "CD67890",
+                "stationName": "Oresund",
+                "invoiceStatus": "Unpaid",
+                "receiptNumber": "R-2",
+            },
+            {"id": 3},
+            {"id": 4},
+            {"id": 5},
+            {"id": 6},
+        ],
     }
     assert FakeClient.instances[0].force_login is True
     assert FakeClient.instances[0].kwargs["use_cache"] is True
     assert "\n  " in result.stdout
+
+
+def test_trips_command_defaults_to_rich_cards(monkeypatch) -> None:
+    FakeClient.instances = []
+    monkeypatch.setattr(cli, "BrobizzClient", FakeClient)
+    runner = CliRunner()
+
+    result = runner.invoke(cli.app, ["trips"])
+
+    assert result.exit_code == 0
+    assert "Trips for account resolved" in result.stdout
+    assert "Showing 5 latest of 6 returned (12 total)" in result.stdout
+    assert "trip 1" in result.stdout
+    assert "trip 5" in result.stdout
+    assert "trip 6" not in result.stdout
+    assert "2026-06-20" in result.stdout
+    assert "125 DKK" in result.stdout
+    assert "AB12345" in result.stdout
+    assert "Storebaelt" in result.stdout
+    assert "Paid" not in result.stdout
+    assert "R-1" not in result.stdout
+    assert "id" not in result.stdout
+    assert result.stdout.lstrip()[0] != "{"
+
+
+def test_trips_command_accepts_number_and_full_options(monkeypatch) -> None:
+    FakeClient.instances = []
+    monkeypatch.setattr(cli, "BrobizzClient", FakeClient)
+    runner = CliRunner()
+
+    result = runner.invoke(cli.app, ["trips", "-n", "2", "--full"])
+
+    assert result.exit_code == 0
+    assert "Showing 2 latest of 6 returned (12 total)" in result.stdout
+    assert "trip 1" in result.stdout
+    assert "trip 2" in result.stdout
+    assert "trip 3" not in result.stdout
+    assert "id" in result.stdout
+    assert "receiptNumber" in result.stdout
+
+
+def test_trips_command_rejects_non_positive_card_count(monkeypatch) -> None:
+    FakeClient.instances = []
+    monkeypatch.setattr(cli, "BrobizzClient", FakeClient)
+    runner = CliRunner()
+
+    result = runner.invoke(cli.app, ["trips", "--number", "0"])
+
+    assert result.exit_code == 1
+    assert "--number must be greater than 0" in result.stderr
+    assert FakeClient.instances == []
+
+
+def test_trips_json_ignores_card_count(monkeypatch) -> None:
+    FakeClient.instances = []
+    monkeypatch.setattr(cli, "BrobizzClient", FakeClient)
+    runner = CliRunner()
+
+    result = runner.invoke(cli.app, ["trips", "--json", "--number", "0"])
+
+    assert result.exit_code == 0
+    assert len(json.loads(result.stdout)["transactions"]) == 6
 
 
 def test_api_commands_can_disable_cache(monkeypatch) -> None:

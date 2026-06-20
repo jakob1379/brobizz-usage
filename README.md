@@ -64,6 +64,7 @@ brobizz-usage auth login --username you@example.com --password 'secret' --otp-ch
 
 ```bash
 brobizz-usage trips
+brobizz-usage trips --json
 brobizz-usage --force-login trips --search "Storebaelt" --include-payment-records
 brobizz-usage account
 brobizz-usage account --json
@@ -97,6 +98,9 @@ python -c 'from brobizz_usage import get_user_data_path; print(get_user_data_pat
 
 `trips` also supports:
 
+- `--json`: output trips and usage records as JSON instead of Rich-formatted cards.
+- `--number`, `-n`: number of latest trip cards to show. Defaults to `5`.
+- `--full`: expand each visible card with additional scalar fields.
 - `--search`: optional transaction search string.
 - `--include-payment-records`: include standalone payments, payment vouchers, and drafts.
 

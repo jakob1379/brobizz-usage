@@ -10,6 +10,10 @@ from brobizz_usage._runtime import prefer_virtualenv_site_packages
 prefer_virtualenv_site_packages()
 
 import typer
+from rich.console import Console
+from rich.panel import Panel
+from rich.table import Table
+from rich.text import Text
 
 from brobizz_usage.auth import BrowserLoginCredentials, BrowserOAuthLogin, OAuthManager, OtpChannel
 from brobizz_usage.cache import DEFAULT_CACHE_TTL_SECONDS, DiskResponseCache
@@ -24,11 +28,197 @@ app.add_typer(auth_app, name="auth")
 
 
 DEFAULT_JSON_INDENT = 2
+DEFAULT_TRIP_CARD_COUNT = 5
 
 
 def json_stdout(data: Any) -> None:
     json.dump(data, sys.stdout, ensure_ascii=False, indent=DEFAULT_JSON_INDENT)
     sys.stdout.write("\n")
+
+
+def first_text_value(data: dict[str, Any], keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = data.get(key)
+        if value is not None and str(value).strip():
+            return str(value)
+    return None
+
+
+def format_scalar(value: Any) -> str:
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, int | float):
+        return str(value)
+    if isinstance(value, str):
+        return value
+    return json.dumps(value, ensure_ascii=False, sort_keys=True)
+
+
+def format_money(transaction: dict[str, Any]) -> str | None:
+    amount_key = next(
+        (
+            key
+            for key in (
+                "amount",
+                "totalAmount",
+                "price",
+                "chargedAmount",
+                "transactionAmount",
+            )
+            if transaction.get(key) is not None
+        ),
+        None,
+    )
+    if amount_key is None:
+        return None
+    currency = first_text_value(transaction, ("currency", "currencyCode", "amountCurrency"))
+    amount = format_scalar(transaction[amount_key])
+    return f"{amount} {currency}" if currency else amount
+
+
+def transaction_date(transaction: dict[str, Any]) -> str | None:
+    return first_text_value(
+        transaction,
+        (
+            "transactionDate",
+            "date",
+            "usageDate",
+            "createdDate",
+            "createdAt",
+            "startDate",
+        ),
+    )
+
+
+def transaction_license_plate(transaction: dict[str, Any]) -> str | None:
+    return first_text_value(
+        transaction,
+        (
+            "licenseplate",
+            "licensePlate",
+            "licensePlateNumber",
+            "numberPlate",
+            "plateNumber",
+            "registrationNumber",
+        ),
+    )
+
+
+def transaction_station_name(transaction: dict[str, Any]) -> str | None:
+    return first_text_value(
+        transaction,
+        (
+            "stationName",
+            "station",
+            "locationName",
+            "merchantName",
+        ),
+    )
+
+
+def transaction_invoice_status(transaction: dict[str, Any]) -> str | None:
+    return first_text_value(transaction, ("invoiceStatus", "paymentStatus"))
+
+
+def is_paid_invoice(transaction: dict[str, Any]) -> bool:
+    status = transaction_invoice_status(transaction)
+    if status is None:
+        return False
+    normalized_status = re.sub(r"[\s_-]+", "", status).lower()
+    return normalized_status in {"paid", "settled", "complete", "completed"}
+
+
+def transaction_card_styles(transaction: dict[str, Any]) -> tuple[str, str]:
+    if is_paid_invoice(transaction):
+        return ("steel_blue", "white on steel_blue")
+    return ("deep_pink4", "white on deep_pink4")
+
+
+def transaction_compact_rows(transaction: dict[str, Any]) -> list[tuple[str, str]]:
+    rows = [
+        ("date", transaction_date(transaction)),
+        ("amount", format_money(transaction)),
+        ("licenseplate", transaction_license_plate(transaction)),
+        ("stationName", transaction_station_name(transaction)),
+    ]
+    return [(label, value) for label, value in rows if value is not None]
+
+
+def transaction_extra_scalar_rows(transaction: dict[str, Any]) -> list[tuple[str, str]]:
+    skipped_keys = {
+        "amount",
+        "amountCurrency",
+        "chargedAmount",
+        "currency",
+        "currencyCode",
+        "date",
+        "createdAt",
+        "createdDate",
+        "licenseplate",
+        "licensePlate",
+        "licensePlateNumber",
+        "merchantName",
+        "numberPlate",
+        "paymentStatus",
+        "plateNumber",
+        "price",
+        "registrationNumber",
+        "station",
+        "stationName",
+        "startDate",
+        "totalAmount",
+        "transactionAmount",
+        "transactionDate",
+        "usageDate",
+    }
+    rows = []
+    for key, value in transaction.items():
+        if key in skipped_keys or value in (None, ""):
+            continue
+        if isinstance(value, list | dict):
+            continue
+        rows.append((key, format_scalar(value)))
+    return rows
+
+
+def print_trips_cards(result: dict[str, Any], number: int = DEFAULT_TRIP_CARD_COUNT, full: bool = False) -> None:
+    console = Console()
+    transactions = result.get("transactions", [])
+    if not isinstance(transactions, list):
+        transactions = []
+
+    account_id = result.get("accountId", "unknown")
+    returned_count = int(result.get("returnedCount") or len(transactions))
+    total_count = result.get("totalCount", returned_count)
+    visible_transactions = transactions[:number]
+    console.print(Text(f"Trips for account {account_id}", style="bold"))
+    console.print(f"Showing {len(visible_transactions)} latest of {returned_count} returned ({total_count} total)")
+
+    if not transactions:
+        console.print(Panel("No trips found", title="Trips", border_style="cyan"))
+        return
+
+    for index, item in enumerate(visible_transactions, start=1):
+        if not isinstance(item, dict):
+            item = {"value": item}
+        border_style, title_style = transaction_card_styles(item)
+        details = Table.grid(padding=(0, 1))
+        details.add_column(style="dim")
+        details.add_column()
+        for key, value in transaction_compact_rows(item):
+            details.add_row(key, value)
+        if full:
+            for key, value in transaction_extra_scalar_rows(item):
+                details.add_row(key, value)
+        console.print(
+            Panel(
+                details,
+                title=Text(f" trip {index} ", style=title_style),
+                title_align="left",
+                border_style=border_style,
+                style=border_style,
+            )
+        )
 
 
 def run_command(action: Callable[[], T]) -> T:
@@ -169,17 +359,34 @@ def trips(
             help="Include standalone payments, payment vouchers, and drafts.",
         ),
     ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output trips and usage records as JSON."),
+    ] = False,
+    full: Annotated[
+        bool,
+        typer.Option("--full", help="Show all scalar fields on each visible card."),
+    ] = False,
+    number: Annotated[
+        int,
+        typer.Option("--number", "-n", help="Number of latest trip cards to show."),
+    ] = DEFAULT_TRIP_CARD_COUNT,
 ) -> None:
-    """Output all trips and usage records as JSON."""
+    """Output all trips and usage records."""
 
     def action() -> None:
+        if not json_output and number <= 0:
+            raise BrobizzError("--number must be greater than 0")
         client = create_client(ctx)
         result = client.get_all_transactions(
             account_id=account_id,
             search_string=search,
             include_payment_records=include_payment_records,
         )
-        json_stdout(result)
+        if json_output:
+            json_stdout(result)
+        else:
+            print_trips_cards(result, number=number, full=full)
 
     run_command(action)
 

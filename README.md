@@ -25,23 +25,24 @@ uvx playwright install chromium
 
 ## Authentication
 
-The first authenticated command opens a headed Playwright browser at:
+Run the login command before using authenticated API commands:
 
-```text
-https://login.brobizz.com/ture-og-forbrug
+```bash
+brobizz-usage auth login
 ```
 
-Complete the Brobizz/Auth0 login in that browser. The CLI captures the OAuth token exchange from the isolated browser context and stores the token state in the user config directory via `platformdirs` with file mode `0600`.
+By default, `auth login` prompts for the Brobizz/Auth0 email, password, `SMS|email` channel, and one-time code in the terminal while running Chromium headless. The channel prompt defaults to `SMS`. This keeps the normal flow usable on servers without opening a visible browser. The CLI captures the OAuth token exchange from the isolated browser context and stores the token state in the user config directory via `platformdirs` with file mode `0600`.
 
 The client refreshes tokens before expiry and retries once after `401` or `403`. If refresh fails, stale token state is deleted and a new browser login is opened. The package does not read HAR files, `.brobizz_token_cache.json`, or any other reverse-engineering artifact.
 
-For automated login, pass the account email and provide the password directly or on stdin:
+Pass any known values up front to skip those prompts:
 
 ```bash
+brobizz-usage auth login --username you@example.com
 brobizz-usage auth login --username you@example.com --password 'secret'
 ```
 
-If `--otp-channel` is omitted, the CLI shows an interactive SMS/email menu during the live login flow, immediately before it sends the one-time code. For non-interactive callers, pass the channel explicitly:
+If `--otp-channel` is omitted, the CLI asks for `sms` or `email` during the live login flow, immediately before it sends the one-time code. For non-interactive callers, pass the channel explicitly:
 
 ```bash
 brobizz-usage auth login --username you@example.com --password 'secret' --otp-channel sms
@@ -49,15 +50,15 @@ brobizz-usage auth login --username you@example.com --password 'secret' --otp-ch
 brobizz-usage auth login --username you@example.com --password-stdin --otp-channel sms
 ```
 
-Automated credential login runs Chromium headless by default whenever `--username` is passed. Use this mode on servers or from other tools that can provide `--password` or `--password-stdin` and `--otp-channel`. `--headless` can be passed explicitly for readability in scripts; `--headed` shows Chromium for debugging the automated flow. Manual login without `--username` is always headed.
+`--headless` can be passed explicitly for readability in scripts. Use `--browser-login` only when you need the old manual headed browser login.
 
 After the channel is selected and the code is sent, the CLI prompts for the received one-time code in the same browser flow.
 
-To watch the browser being controlled by the CLI while debugging selectors or login-page changes, add `--headed`:
+To use the visible browser while debugging selectors or login-page changes, add `--browser-login`:
 
 ```bash
-brobizz-usage auth login --username you@example.com --headed
-brobizz-usage auth login --username you@example.com --password 'secret' --otp-channel sms --headed
+brobizz-usage auth login --browser-login
+brobizz-usage auth login --browser-login --username you@example.com --password 'secret' --otp-channel sms
 ```
 
 ## CLI

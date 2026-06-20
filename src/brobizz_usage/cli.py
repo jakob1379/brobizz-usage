@@ -272,15 +272,12 @@ def read_stdin_secret(name: str) -> str:
 
 
 def prompt_otp_channel() -> OtpChannel:
-    typer.echo("One-time code delivery channel:")
-    typer.echo("  1. SMS")
-    typer.echo("  2. Email")
-    value = typer.prompt("Choose channel", default="1").strip().lower()
-    if value in {"1", "sms"}:
+    value = typer.prompt("One-time code delivery channel (SMS|email)", default="SMS").strip().lower()
+    if value == "sms":
         return OtpChannel.SMS
-    if value in {"2", "email", "mail"}:
+    if value == "email":
         return OtpChannel.EMAIL
-    raise BrobizzError("Choose OTP channel 1/sms or 2/email")
+    raise BrobizzError("Choose OTP channel SMS or email")
 
 
 def prompt_otp_code() -> str:
@@ -292,16 +289,29 @@ def prompt_otp_code() -> str:
         typer.echo("One-time code must contain exactly 6 digits. Try again.", err=True)
 
 
+def prompt_required_text(prompt: str) -> str:
+    value = typer.prompt(prompt).strip()
+    if not value:
+        raise BrobizzError(f"{prompt} is required")
+    return value
+
+
 def resolve_login_credentials(
     username: str | None,
     password: str | None,
     password_stdin: bool,
     otp_channel: OtpChannel | None,
+    prompt_missing: bool = False,
 ) -> BrowserLoginCredentials | None:
     if password is not None and password_stdin:
         raise BrobizzError("--password and --password-stdin are mutually exclusive")
     if password_stdin and otp_channel is None:
         raise BrobizzError("--otp-channel is required when --password-stdin is used")
+    if username is None:
+        if prompt_missing and not password_stdin:
+            username = prompt_required_text("Email address")
+        elif prompt_missing:
+            raise BrobizzError("--username is required when --password-stdin is used")
     if username is None:
         if password is not None or password_stdin or otp_channel is not None:
             raise BrobizzError("--username is required for automated credential login")
@@ -324,13 +334,11 @@ def resolve_login_credentials(
     )
 
 
-def resolve_browser_login(headless: bool, headed: bool, credentials: BrowserLoginCredentials | None) -> BrowserOAuthLogin:
-    if headless and headed:
-        raise BrobizzError("--headless and --headed are mutually exclusive")
+def resolve_browser_login(headless: bool, credentials: BrowserLoginCredentials | None) -> BrowserOAuthLogin:
     if headless and credentials is None:
-        raise BrobizzError("--headless requires --username for automated credential login")
+        raise BrobizzError("headless login requires credential prompts or options")
     return BrowserOAuthLogin(
-        headless=credentials is not None and not headed,
+        headless=credentials is not None and headless,
         progress=lambda message: typer.echo(message, err=True),
     )
 
@@ -419,7 +427,7 @@ def auth_login(
         str | None,
         typer.Option(
             "--username",
-            help="Brobizz/Auth0 account email. Enables automated Playwright login, headless by default.",
+            help="Brobizz/Auth0 account email. Prefills the headless CLI login prompt.",
         ),
     ] = None,
     password: Annotated[
@@ -437,23 +445,22 @@ def auth_login(
     headless: Annotated[
         bool,
         typer.Option(
-            "--headless",
-            help="Explicitly run automated credential login without showing Chromium. Requires --username.",
+            "--headless/--browser-login",
+            help="Use CLI credential prompts with headless Chromium, or open the headed browser login.",
         ),
-    ] = False,
-    headed: Annotated[
-        bool,
-        typer.Option(
-            "--headed",
-            help="Show Chromium during automated credential login for debugging. Manual login is always headed.",
-        ),
-    ] = False,
+    ] = True,
 ) -> None:
-    """Force browser login and save new tokens."""
+    """Log in and save new tokens."""
 
     def action() -> None:
-        credentials = resolve_login_credentials(username, password, password_stdin, otp_channel)
-        browser_login = resolve_browser_login(headless, headed, credentials)
+        credentials = resolve_login_credentials(
+            username,
+            password,
+            password_stdin,
+            otp_channel,
+            prompt_missing=headless,
+        )
+        browser_login = resolve_browser_login(headless, credentials)
         OAuthManager(browser_login=browser_login).get_valid_state(force_login=True, credentials=credentials)
         typer.echo("Login complete")
 

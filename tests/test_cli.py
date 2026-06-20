@@ -270,12 +270,35 @@ def test_indent_and_command_local_force_login_are_not_cli_options() -> None:
     assert command_force_login_result.exit_code != 0
 
 
-def test_auth_login_without_credentials_keeps_manual_flow(monkeypatch) -> None:
+def test_auth_login_without_credentials_prompts_for_headless_flow(monkeypatch) -> None:
     FakeOAuthManager.instances = []
     monkeypatch.setattr(cli, "OAuthManager", FakeOAuthManager)
     runner = CliRunner()
 
-    result = runner.invoke(cli.app, ["auth", "login"])
+    result = runner.invoke(
+        cli.app,
+        ["auth", "login"],
+        input="user@example.com\nsecret\n\n",
+    )
+
+    assert result.exit_code == 0
+    assert result.stdout.endswith("Login complete\n")
+    call = FakeOAuthManager.instances[0].calls[0]
+    assert call["force_login"] is True
+    credentials = call["credentials"]
+    assert credentials is not None
+    assert credentials.username == "user@example.com"
+    assert credentials.password == "secret"
+    assert call["otp_channel_from_provider"] == cli.OtpChannel.SMS
+    assert FakeOAuthManager.instances[0].kwargs["browser_login"].headless is True
+
+
+def test_auth_login_can_use_manual_browser_flow(monkeypatch) -> None:
+    FakeOAuthManager.instances = []
+    monkeypatch.setattr(cli, "OAuthManager", FakeOAuthManager)
+    runner = CliRunner()
+
+    result = runner.invoke(cli.app, ["auth", "login", "--browser-login"])
 
     assert result.exit_code == 0
     assert result.stdout == "Login complete\n"
@@ -333,7 +356,7 @@ def test_auth_login_prompts_for_otp_channel_when_interactive(monkeypatch) -> Non
     result = runner.invoke(
         cli.app,
         ["auth", "login", "--username", "user@example.com", "--password", "secret"],
-        input="2\n",
+        input="email\n",
     )
 
     assert result.exit_code == 0
@@ -343,6 +366,7 @@ def test_auth_login_prompts_for_otp_channel_when_interactive(monkeypatch) -> Non
     assert credentials.otp_channel is None
     assert call["otp_channel_from_provider"] == cli.OtpChannel.EMAIL
     assert "One-time code delivery channel" in result.stdout
+    assert "SMS|email" in result.stdout
 
 
 def test_otp_provider_retries_until_code_has_six_digits(monkeypatch) -> None:
@@ -352,14 +376,24 @@ def test_otp_provider_retries_until_code_has_six_digits(monkeypatch) -> None:
     assert cli.prompt_otp_code() == "656955"
 
 
-def test_auth_login_can_force_headed_automated_login(monkeypatch) -> None:
+def test_auth_login_can_run_credential_login_in_visible_browser(monkeypatch) -> None:
     FakeOAuthManager.instances = []
     monkeypatch.setattr(cli, "OAuthManager", FakeOAuthManager)
     runner = CliRunner()
 
     result = runner.invoke(
         cli.app,
-        ["auth", "login", "--username", "user@example.com", "--password", "secret", "--otp-channel", "sms", "--headed"],
+        [
+            "auth",
+            "login",
+            "--browser-login",
+            "--username",
+            "user@example.com",
+            "--password",
+            "secret",
+            "--otp-channel",
+            "sms",
+        ],
     )
 
     assert result.exit_code == 0
@@ -381,42 +415,25 @@ def test_auth_login_rejects_conflicting_password_sources(monkeypatch) -> None:
     assert FakeOAuthManager.instances == []
 
 
-def test_auth_login_rejects_headless_manual_login(monkeypatch) -> None:
-    FakeOAuthManager.instances = []
-    monkeypatch.setattr(cli, "OAuthManager", FakeOAuthManager)
-    runner = CliRunner()
-
-    result = runner.invoke(cli.app, ["auth", "login", "--headless"])
-
-    assert result.exit_code == 1
-    assert "--headless requires --username" in result.stderr
-    assert FakeOAuthManager.instances == []
-
-
-def test_auth_login_rejects_conflicting_browser_modes(monkeypatch) -> None:
+def test_auth_login_headless_option_prompts_for_missing_credentials(monkeypatch) -> None:
     FakeOAuthManager.instances = []
     monkeypatch.setattr(cli, "OAuthManager", FakeOAuthManager)
     runner = CliRunner()
 
     result = runner.invoke(
         cli.app,
-        [
-            "auth",
-            "login",
-            "--username",
-            "user@example.com",
-            "--password",
-            "secret",
-            "--otp-channel",
-            "sms",
-            "--headless",
-            "--headed",
-        ],
+        ["auth", "login", "--headless"],
+        input="user@example.com\nsecret\nemail\n",
     )
 
-    assert result.exit_code == 1
-    assert "--headless and --headed are mutually exclusive" in result.stderr
-    assert FakeOAuthManager.instances == []
+    assert result.exit_code == 0
+    call = FakeOAuthManager.instances[0].calls[0]
+    credentials = call["credentials"]
+    assert credentials is not None
+    assert credentials.username == "user@example.com"
+    assert credentials.password == "secret"
+    assert call["otp_channel_from_provider"] == cli.OtpChannel.EMAIL
+    assert FakeOAuthManager.instances[0].kwargs["browser_login"].headless is True
 
 
 def test_auth_login_requires_otp_channel_with_password_stdin(monkeypatch) -> None:

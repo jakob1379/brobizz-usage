@@ -121,7 +121,7 @@ class TokenStore:
 
 
 class BrowserOAuthLogin:
-    """Open a headed browser and capture the OAuth token exchange after login."""
+    """Capture the OAuth token exchange from a Playwright browser login."""
 
     def __init__(
         self,
@@ -263,7 +263,7 @@ class BrowserOAuthLogin:
         )
         self._run_step(
             "Submitting username and password",
-            lambda: page.get_by_role("button", name="Next").click(timeout=30_000),
+            lambda: self._click_auth0_submit(page, timeout=30_000),
         )
 
         otp_channel = credentials.otp_channel
@@ -279,7 +279,7 @@ class BrowserOAuthLogin:
         self._fill_otp_code(page, otp_code)
         self._run_step(
             "Submitting one-time code",
-            lambda: page.get_by_role("button", name="Next").click(timeout=30_000),
+            lambda: self._click_auth0_submit(page, timeout=30_000),
         )
         self._emit_progress("Waiting for OAuth token response")
 
@@ -287,7 +287,7 @@ class BrowserOAuthLogin:
         if self._click_button_if_available(page, "Send a new one-time code", timeout=10_000):
             self._run_step(
                 "Opening one-time-code delivery choices",
-                lambda: page.get_by_role("button", name="Next").click(timeout=30_000),
+                lambda: self._click_auth0_submit(page, timeout=30_000),
             )
 
         labels = {
@@ -303,7 +303,7 @@ class BrowserOAuthLogin:
             if self._click_button_if_available(page, label, timeout=5_000):
                 self._run_step(
                     f"Sending {otp_channel.value} one-time code",
-                    lambda: page.get_by_role("button", name="Next").click(timeout=30_000),
+                    lambda: self._click_auth0_submit(page, timeout=30_000),
                 )
                 return
         raise BrobizzAuthError(f"Could not find the {otp_channel.value} one-time-code option")
@@ -314,6 +314,26 @@ class BrowserOAuthLogin:
             return True
         except Exception:
             return False
+
+    def _click_auth0_submit(self, page: Any, timeout: int) -> None:
+        labels = ("Next", "Continue", "Log in", "Sign in", "Fortsæt", "Næste", "Log ind")
+        errors: list[str] = []
+        attempt_timeout = min(timeout, 5_000)
+        for label in labels:
+            try:
+                page.get_by_role("button", name=label, exact=True).click(timeout=attempt_timeout)
+                return
+            except Exception as exc:
+                errors.append(str(exc).splitlines()[0])
+
+        for selector in ('button[type="submit"]', 'input[type="submit"]'):
+            try:
+                page.locator(selector).click(timeout=attempt_timeout)
+                return
+            except Exception as exc:
+                errors.append(str(exc).splitlines()[0])
+
+        raise BrobizzAuthError(f"Could not find a usable submit button: {'; '.join(errors)}")
 
     def _fill_first_available(self, locator_factories: list[Callable[[], Any]], value: str) -> None:
         errors: list[str] = []

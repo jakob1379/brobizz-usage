@@ -120,6 +120,16 @@ def test_prepare_otp_delivery_selects_sms_channel() -> None:
     assert ("click", "button", "Send a one-time code via SMS", {"timeout": 5000}) in page.actions
     next_clicks = [action for action in page.actions if action[:3] == ("click", "button", "Next")]
     assert len(next_clicks) == 2
+    assert all(action[3] == {"timeout": 5000} for action in next_clicks)
+
+
+def test_auth0_submit_falls_back_to_alternate_button_labels() -> None:
+    page = FakePage({("button", "Next")})
+
+    BrowserOAuthLogin()._click_auth0_submit(page, timeout=30_000)
+
+    assert ("click", "button", "Next", {"timeout": 5000}) in page.actions
+    assert ("click", "button", "Continue", {"timeout": 5000}) in page.actions
 
 
 def test_run_step_reports_progress_and_step_failure() -> None:
@@ -154,7 +164,7 @@ def test_credential_login_prompts_for_channel_then_otp_during_live_flow() -> Non
     )
 
     assert page.actions.index(("provider", "channel")) > page.actions.index(
-        ("click", "button", "Next", {"timeout": 30000})
+        ("click", "button", "Next", {"timeout": 5000})
     )
     assert page.actions.index(("provider", "otp")) > page.actions.index(
         ("click", "button", "Send a one-time code via SMS", {"timeout": 5000})

@@ -1,109 +1,134 @@
 # Brobizz Usage
 
-Packaged Python CLI and client library for Brobizz trips, usage, account, and profile JSON.
+Command-line tool for showing Brobizz trips and account usage.
 
-## Install
+## Quick Start
 
-Enter the Nix development shell first:
+From this repository:
 
 ```bash
 nix develop
-```
-
-Then install the Python dependencies:
-
-```bash
 uv sync --extra dev
+uv run brobizz-usage auth login
+uv run brobizz-usage trips
 ```
 
-For normal use without the dev tools:
+That is the normal flow. Login runs in headless Chromium and asks for:
+
+1. Brobizz/Auth0 email
+2. Password
+3. One-time-code channel: `SMS|email`, default `SMS`
+4. The received one-time code
+
+After login, tokens are saved securely in your user config directory and reused automatically.
+
+## Install As A Tool
+
+For regular use outside the development shell:
 
 ```bash
 uv tool install .
 uvx playwright install chromium
+brobizz-usage auth login
+brobizz-usage trips
 ```
 
-## Authentication
+## Common Commands
 
-Run the login command before using authenticated API commands:
+Show recent trips as terminal cards:
 
 ```bash
-brobizz-usage auth login
+brobizz-usage trips
 ```
 
-By default, `auth login` prompts for the Brobizz/Auth0 email, password, `SMS|email` channel, and one-time code in the terminal while running Chromium headless. The channel prompt defaults to `SMS`. This keeps the normal flow usable on servers without opening a visible browser. The CLI captures the OAuth token exchange from the isolated browser context and stores the token state in the user config directory via `platformdirs` with file mode `0600`.
+Show trips as JSON:
 
-The client refreshes tokens before expiry and retries once after `401` or `403`. If refresh fails, stale token state is deleted and a new browser login is opened. The package does not read HAR files, `.brobizz_token_cache.json`, or any other reverse-engineering artifact.
+```bash
+brobizz-usage trips --json
+```
 
-Pass any known values up front to skip those prompts:
+Show account details:
+
+```bash
+brobizz-usage account
+```
+
+Log out:
+
+```bash
+brobizz-usage auth logout
+```
+
+## Login Options
+
+You can prefill login values to skip prompts:
 
 ```bash
 brobizz-usage auth login --username you@example.com
 brobizz-usage auth login --username you@example.com --password 'secret'
+brobizz-usage auth login --username you@example.com --password 'secret' --otp-channel sms
 ```
 
-If `--otp-channel` is omitted, the CLI asks for `sms` or `email` during the live login flow, immediately before it sends the one-time code. For non-interactive callers, pass the channel explicitly:
+For scripts, avoid putting the password in shell history:
 
 ```bash
-brobizz-usage auth login --username you@example.com --password 'secret' --otp-channel sms
-brobizz-usage auth login --username you@example.com --password 'secret' --otp-channel email
-brobizz-usage auth login --username you@example.com --password-stdin --otp-channel sms
+printf '%s\n' 'secret' | brobizz-usage auth login --username you@example.com --password-stdin --otp-channel sms
 ```
 
-`--headless` can be passed explicitly for readability in scripts. Use `--browser-login` only when you need the old manual headed browser login.
-
-After the channel is selected and the code is sent, the CLI prompts for the received one-time code in the same browser flow.
-
-To use the visible browser while debugging selectors or login-page changes, add `--browser-login`:
+`auth login` is headless by default, which is suitable for servers. To debug the browser flow visually:
 
 ```bash
 brobizz-usage auth login --browser-login
-brobizz-usage auth login --browser-login --username you@example.com --password 'secret' --otp-channel sms
 ```
 
-## CLI
+## Trip Options
 
 ```bash
-brobizz-usage trips
+brobizz-usage trips -n 10
+brobizz-usage trips --full
+brobizz-usage trips --search "Storebaelt"
+brobizz-usage trips --include-payment-records
 brobizz-usage trips --json
-brobizz-usage --force-login trips --search "Storebaelt" --include-payment-records
-brobizz-usage account
-brobizz-usage account --json
-brobizz-usage auth login
-brobizz-usage auth logout
 ```
 
-Global options:
+Options:
 
-- `--force-login`: ignore saved tokens and open browser login first.
+- `--number`, `-n`: number of latest trip cards to show. Defaults to `5`.
+- `--full`: show additional scalar fields on each visible card.
+- `--search`: filter transactions by search text.
+- `--include-payment-records`: include standalone payments, vouchers, and drafts.
+- `--json`: output raw trips and usage records as JSON.
 
-Shared options on API commands:
-
-- `--account-id`: Brobizz account id. Defaults to `currentAccountId`, then `defaultAccountId`, then the first usable `accountIds` value.
-
-`account` outputs combined `person` and `account` objects as JSON.
-
-API commands cache successful GET responses on disk for one hour by default. This keeps repeated `trips` and `account` calls fast and avoids unnecessary Brobizz requests. Cache keys include the authenticated token subject when available; use `--no-cache` or `--force-login` when you need a fresh request.
+## Account Options
 
 ```bash
-brobizz-usage trips
+brobizz-usage account
+brobizz-usage account --account-id ACCOUNT_ID
+```
+
+If `--account-id` is omitted, the CLI uses `currentAccountId`, then `defaultAccountId`, then the first usable `accountIds` value.
+
+## Cache
+
+API responses are cached on disk for one hour by default.
+
+```bash
 brobizz-usage --no-cache trips
 brobizz-usage --cache-ttl 300 trips
+brobizz-usage --force-login trips
 ```
 
-The cache lives below the package user data directory, which you can inspect with:
+Options:
+
+- `--no-cache`: bypass cached API responses.
+- `--cache-ttl`: set cache lifetime in seconds.
+- `--force-login`: ignore saved tokens and log in again before the command.
+
+Inspect the cache directory:
 
 ```bash
 python -c 'from brobizz_usage import get_user_data_path; print(get_user_data_path("cache", ensure_exists=True))'
 ```
-
-`trips` also supports:
-
-- `--json`: output trips and usage records as JSON instead of Rich-formatted cards.
-- `--number`, `-n`: number of latest trip cards to show. Defaults to `5`.
-- `--full`: expand each visible card with additional scalar fields.
-- `--search`: optional transaction search string.
-- `--include-payment-records`: include standalone payments, payment vouchers, and drafts.
 
 ## Python API
 
@@ -116,16 +141,17 @@ account = client.get_account(person["currentAccountId"])
 transactions = client.get_all_transactions(search_string="Storebaelt")
 ```
 
-## Tests
+## Development
+
+Run tests:
 
 ```bash
 uv run pytest
 ```
 
-Automated tests mock token state, HTTP sessions, and CLI clients. They do not run live browser login or live Brobizz API calls.
+The tests mock token state, HTTP sessions, and CLI clients. They do not run live browser login or live Brobizz API calls.
 
-Captured payloads are not required by the package. If you save samples locally, keep them under
-the app's XDG data directory:
+Captured payloads are not required by the package. If you save samples locally, keep them under the app's XDG data directory:
 
 ```bash
 python -c 'from brobizz_usage import get_user_data_path; print(get_user_data_path(ensure_exists=True))'

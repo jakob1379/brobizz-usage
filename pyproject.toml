@@ -8,6 +8,21 @@ version = "0.1.0"
 description = "CLI and client library for Brobizz trips and account usage JSON."
 readme = "README.md"
 requires-python = ">=3.11"
+authors = [
+  { name = "Jakob Stender Guldberg" },
+]
+keywords = ["brobizz", "cli", "toll", "usage", "account"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: End Users/Desktop",
+  "Intended Audience :: System Administrators",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Topic :: Internet",
+  "Topic :: Utilities",
+]
 dependencies = [
   "httpx>=0.28.1",
   "platformdirs>=4.10.0",
@@ -16,14 +31,14 @@ dependencies = [
   "typer>=0.26.7",
 ]
 
-[project.optional-dependencies]
-dev = [
-  "pytest>=9.1.1",
-  "responses>=0.26.1",
-]
-
 [project.scripts]
 brobizz-usage = "brobizz_usage.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/jakob1379/brobizz-usage"
+Repository = "https://github.com/jakob1379/brobizz-usage"
+Issues = "https://github.com/jakob1379/brobizz-usage/issues"
+Changelog = "https://github.com/jakob1379/brobizz-usage/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/brobizz_usage"]
@@ -34,5 +49,7 @@ pythonpath = ["src"]
 
 [dependency-groups]
 dev = [
+    "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
+    "responses>=0.26.1",
 ]

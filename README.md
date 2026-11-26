@@ -2,6 +2,12 @@
 
 Command-line tool for showing Brobizz trips and account usage.
 
+<p align="center">
+  <img src=".github/assets/crossing.svg" width="100%" alt="A car crosses a suspension bridge and passes a toll gantry; the crossing then appears in a terminal running brobizz-usage trips as a pink trip card for an unpaid trip, above a steel blue card for a paid one. Example data.">
+</p>
+
+Log in once with your Brobizz account, then read your toll trips and account details from the terminal, as JSON, or from Python.
+
 ## Quick Start
 
 From this repository:
@@ -20,7 +26,7 @@ That is the normal flow. Login runs in headless Chromium and asks for:
 3. One-time-code channel: `SMS|email`, default `SMS`
 4. The received one-time code
 
-After login, tokens are saved securely in your user config directory and reused automatically.
+After login, tokens are saved in your user config directory with user-only file permissions and reused automatically. Expired tokens are refreshed for you.
 
 ## Install As A Tool
 
@@ -35,29 +41,14 @@ brobizz-usage trips
 
 ## Common Commands
 
-Show recent trips as terminal cards:
+| Task                            | Command                      |
+| ------------------------------- | ---------------------------- |
+| Show recent trips as cards      | `brobizz-usage trips`        |
+| Show trips as JSON              | `brobizz-usage trips --json` |
+| Show account details (JSON)     | `brobizz-usage account`      |
+| Log out and remove saved tokens | `brobizz-usage auth logout`  |
 
-```bash
-brobizz-usage trips
-```
-
-Show trips as JSON:
-
-```bash
-brobizz-usage trips --json
-```
-
-Show account details:
-
-```bash
-brobizz-usage account
-```
-
-Log out:
-
-```bash
-brobizz-usage auth logout
-```
+Trip cards are pink while the invoice is unpaid and steel blue once it is paid.
 
 ## Login Options
 
@@ -91,13 +82,14 @@ brobizz-usage trips --include-payment-records
 brobizz-usage trips --json
 ```
 
-Options:
-
-- `--number`, `-n`: number of latest trip cards to show. Defaults to `5`.
-- `--full`: show additional scalar fields on each visible card.
-- `--search`: filter transactions by search text.
-- `--include-payment-records`: include standalone payments, vouchers, and drafts.
-- `--json`: output raw trips and usage records as JSON.
+| Option                      | Effect                                                     |
+| --------------------------- | ---------------------------------------------------------- |
+| `--number`, `-n`            | Number of latest trip cards to show. Defaults to `5`.      |
+| `--full`                    | Show additional scalar fields on each visible card.        |
+| `--search`                  | Filter transactions by search text.                        |
+| `--include-payment-records` | Include standalone payments, vouchers, and drafts.         |
+| `--json`                    | Output raw trips and usage records as JSON.                |
+| `--account-id`              | Read trips for a specific account instead of the default.  |
 
 ## Account Options
 
@@ -118,11 +110,13 @@ brobizz-usage --cache-ttl 300 trips
 brobizz-usage --force-login trips
 ```
 
-Options:
+| Option          | Effect                                                     |
+| --------------- | ---------------------------------------------------------- |
+| `--no-cache`    | Bypass cached API responses.                               |
+| `--cache-ttl`   | Set cache lifetime in seconds.                             |
+| `--force-login` | Ignore saved tokens and log in again before the command.   |
 
-- `--no-cache`: bypass cached API responses.
-- `--cache-ttl`: set cache lifetime in seconds.
-- `--force-login`: ignore saved tokens and log in again before the command.
+These are global options, so they go before the command name.
 
 Inspect the cache directory:
 
